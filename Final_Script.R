@@ -70,14 +70,12 @@ points(lon_Melka, lat_Melka, col="red", pch=19, cex=1, lwd=1)
 #RESULT 2: MAP OF THE NUMBER OF CHANGES OF PIXELS
 # Install necessary packages if they are not already installed
 if (!require("ggplot2")) install.packages("ggplot2")
-if (!require("viridisLite")) install.packages("viridisLite")
-if (!require("raster")) install.packages("raster")
+if (!require("viridis")) install.packages("viridis")
 if (!require("fields")) install.packages("fields")
 
 # Load packages
 library(ggplot2)
-library(viridisLite)
-library(raster)
+library(viridis)
 library(fields)
 
 # Define the relative path to the .nc file
@@ -91,11 +89,11 @@ image_nchanges <- rast(Nchanges)
 
 par(mfrow=c(1, 1))
 # Define interval limits to represent the results with appropriate colours
-breaks <- c(0, 20, 50, 100, 200, 500, 1000)
+breaks <- c(seq(0, 500, length.out = 100), seq(500.01, 1000, length.out = 2))
 # Define colors for each interval
-colors <- rev(viridis(length(breaks) - 1))
+colors_viridis <- rev(viridis(100))
 
-# Plot the age of the pixels
+# Plot the number of the pixels
 plot(image_nchanges, main = "Number of changes", col = colors, breaks = breaks, legend = FALSE)
 plot(ocean, add = TRUE, col = "#E0EEEE")
 plot(st_geometry(countries), border = "black", add = TRUE)
@@ -103,7 +101,8 @@ plot(st_geometry(countries), border = "black", add = TRUE)
 points(lon_Melka, lat_Melka, col="red", pch=19, cex=1, lwd=1)
 
 # Add a gradient colour bar
-image.plot(zlim = range(breaks), legend.only = TRUE, col = colors, breaks = breaks, smallplot = c(0.85, 0.9, 0.2, 0.8), legend.args = list(side = 3, line = 1.5))
+image.plot(zlim = range(breaks), legend.only = TRUE, col = colors, breaks = breaks, 
+           smallplot = c(0.85, 0.9, 0.2, 0.8))
 #####################################
 # RESULT 3: CORRELATION BETWEEN CLIMATE ZONES
 
@@ -141,57 +140,128 @@ for (i in 1:2501) {
   res_size[i,] <- c(tropical, desert, temperate) 
 }
 
-# Calculate correlation and R2 of the comparison between temperate and tropical
-correlation_temperate_tropical <- cor(res_size$temperate, res_size$tropical)
-model_temperate_tropical <- lm(tropical ~ temperate, data = res_size)
+# AITCHISON: AVOIDING SPURIOUS CORRELATIONS
+# Install necessary packages if they are not already installed
+if (!require("compositions")) install.packages("compositions")
+if (!require("ggplot2")) install.packages("ggplot2")
+if (!require("gridExtra")) install.packages("gridExtra")
+
+# Load packages
+library(compositions)
+library(ggplot2)
+library(gridExtra)
+
+# Define the function to calculate the centered log-ratio (CLR)
+clr_transform <- function(data) {
+  return(clr(data))
+}
+
+# Create the matrix with the data of the three climate zones
+climate_data <- data.frame(
+  tropical = res_size$tropical,
+  temperate = res_size$temperate,
+  desert = res_size$desert
+)
+
+# Apply CLR transformation to the data
+clr_data <- as.data.frame(clr_transform(climate_data))
+
+# Reverse the temporal order for plotting purposes
+clr_data <- clr_data[2501:1, ]
+
+# Plot temporal evolution after CLR transformation
+par(mfrow = c(1, 1))
+par(mar = c(5, 5, 4, 4))
+
+# First plot: original temporal evolution in CLR-TRANSFORMATION
+plot(2501:1, clr_data$tropical, type = "l", col = "#FF82AB", axes = FALSE,
+     ylab = "CLR Transformed Area", xlab = "Million Years Before Present", frame.plot = FALSE,
+     xlim = c(2500, 500), ylim = range(clr_data), main = "Temporal Evolution of Climate Zones (CLR)")
+axis(1, at = seq(2500, 500, by = -100), labels = seq(2.5, 0.5, by = -0.1))
+axis(2)
+lines(2501:1, clr_data$temperate, type = "l", col = "#008B00")
+lines(2501:1, clr_data$desert, type = "l", col = "#CDBE70")
+legend("topright", legend = c("Tropical", "Temperate", "Desert"), col = c("#FF82AB", "#008B00", "#CDBE70"),
+       lty = 1, bg = "white", y.intersp = 0.9, cex = 0.8)
+
+# Calculate correlation and R2 of the comparison between temperate and tropical after CLR transformation
+correlation_temperate_tropical <- cor(clr_data$tropical, clr_data$temperate)
+model_temperate_tropical <- lm(temperate ~ tropical , data = clr_data)
 r2_temperate_tropical <- summary(model_temperate_tropical)$r.squared
 eq_temperate_tropical <- paste("y = ", round(coef(model_temperate_tropical)[1], 2), " + ", round(coef(model_temperate_tropical)[2], 2), "x", sep="")
 
-# Calculate correlation and R2 of the comparison between temperate and desert
-correlation_temperate_desert <- cor(res_size$temperate, res_size$desert)
-model_temperate_desert <- lm(desert ~ temperate, data = res_size)
+# Calculate correlation and R2 of the comparison between temperate and desert after CLR transformation
+correlation_temperate_desert <- cor(clr_data$desert, clr_data$temperate)
+model_temperate_desert <- lm(temperate  ~ desert , data = clr_data)
 r2_temperate_desert <- summary(model_temperate_desert)$r.squared
 eq_temperate_desert <- paste("y = ", round(coef(model_temperate_desert)[1], 2), " + ", round(coef(model_temperate_desert)[2], 2), "x", sep="")
-eq_temperate_desert <- paste("y = ", round(coef(model_temperate_desert)[1], 2), " + ", round(coef(model_temperate_desert)[2], 2), "x", sep="")
 
-
-# Calculate correlation and R2 of the comparison between tropical and desert
-correlation_tropical_desert <- cor(res_size$tropical, res_size$desert)
-model_tropical_desert <- lm(desert ~ tropical, data = res_size)
+# Calculate correlation and R2 of the comparison between tropical and desert after CLR transformation
+correlation_tropical_desert <- cor(clr_data$tropical, clr_data$desert)
+model_tropical_desert <- lm( desert ~ tropical , data = clr_data)
 r2_tropical_desert <- summary(model_tropical_desert)$r.squared
 eq_tropical_desert <- paste("y = ", round(coef(model_tropical_desert)[1], 2), " + ", round(coef(model_tropical_desert)[2], 2), "x", sep="")
 
-# Create a summary table with correlation and R2 values
-summary_table <- data.frame(
-  Comparison = c("Temperate vs Tropical", "Temperate vs Desert", "Tropical vs Desert"),
+# Create a summary table with correlation and R2 values after CLR transformation
+summary_table_clr <- data.frame(
+  Comparison = c("Temperate vs Tropical (CLR)", "Temperate vs Desert (CLR)", "Tropical vs Desert (CLR)"),
   Correlation = c(correlation_temperate_tropical, correlation_temperate_desert, correlation_tropical_desert),
   R2 = c(r2_temperate_tropical, r2_temperate_desert, r2_tropical_desert),
   Equation = c(eq_temperate_tropical, eq_temperate_desert, eq_tropical_desert)
 )
-print(summary_table)
+print(summary_table_clr)
 
 par(mfrow=c(1,3))
-#Plot the 3 comparisons with their respective regression lines
-plot(res_size$temperate, res_size$tropical, xlab = "Temperate", ylab = "Tropical")
-abline(model_temperate_tropical, col="red", lwd=2)
-plot(res_size$temperate, res_size$desert, xlab = "Temperate", ylab = "Desert")
-abline(model_temperate_desert, col="red", lwd=2)
-plot(res_size$tropical, res_size$desert, xlab = "Tropical", ylab = "Desert")
-abline(model_tropical_desert, col="red", lwd=2)
+
+# Plot the 3 comparisons with their respective regression lines after CLR transformation
+
+# Tropical vs Temperate
+plot1 <- ggplot(clr_data, aes(x=tropical, y=temperate)) +
+  geom_point(size=1, shape=21, color="grey75", alpha=0.5, show.legend = FALSE) +
+  geom_smooth(method=lm, color="grey20") +
+  theme_minimal() + 
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14,face="bold")) +
+  labs(x="Tropical", y="Temperate") + 
+  xlim(-0.5, 1) + 
+  ylim(-1.5, 1)
+
+# Tropical vs Desert
+plot2 <- ggplot(clr_data, aes(x=tropical, y=desert)) +
+  geom_point(size=1, shape=19, color="grey75", alpha=0.5, show.legend = FALSE) +
+  geom_smooth(method=lm, color="grey20") +
+  theme_minimal() + 
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14,face="bold")) +
+  labs(x="Tropical", y="Desert") + 
+  xlim(-0.5, 1) + 
+  ylim(-1.5, 1)
+
+# Desert vs Temperate
+plot3 <- ggplot(clr_data, aes(x=desert, y=temperate)) +
+  geom_point(size=1, shape=19, color="grey75", alpha=0.5, show.legend = FALSE) +
+  geom_smooth(method=lm, color="grey20") +
+  theme_minimal() + 
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14,face="bold")) +
+  labs(x="Desert", y="Temperate") + 
+  xlim(-0.5, 1) + 
+  ylim(-1.5, 1)
+
+grid.arrange(plot1, plot2, plot3, ncol = 3)
+
 
 #####################################
-# RESULT 4: TEMPORAL EVOLUTION OF THE PIXEL AREA OF EACH CLIMATE ZONE
+# RESULT 4: TEMPORAL EVOLUTION OF THE PIXEL AREA OF EACH CLIMATE ZONE AFTER CLR TRANSFORMATION
 
 par(mfrow=c(1, 1))
-# Plot the temporal evolution of pixel area for the 3 climate zones overlapped
-#pdf("area_climatezones_all.pdf", width = 7, height = 4)
-plot(2501:1, rev(res_size$tropical), type="l", col= "#FF82AB", axes=FALSE, ylab="area (10^8 ha)", xlab="Million Years Before Present", frame.plot = FALSE, xlim=c(2500, 500), ylim=c(0, 70))
+# Plot the temporal evolution of pixel area for the 3 climate zones overlapped after CLR transformation
+plot(2501:1, clr_data$tropical, type="l", col= "#FF82AB", axes=FALSE, ylab="CLR Transformed Area", xlab="Million Years Before Present", frame.plot = FALSE, xlim=c(2500, 500), ylim=range(clr_data))
 axis(1, at = seq(2500, 500, by = -100), labels = seq(2.5, 0.5, by = -0.1))
 axis(2)
-lines(2501:1, rev(res_size$temperate), type="l", col="#008B00")
-lines(2501:1, rev(res_size$desert), type="l", col="#CDBE70")
+lines(2501:1, clr_data$temperate, type="l", col="#008B00")
+lines(2501:1, clr_data$desert, type="l", col="#CDBE70")
 legend("topright", legend=c("Tropical", "Temperate", "Desert"), col=c("#FF82AB", "#008B00", "#CDBE70"), lty=1, bg="white", y.intersp=0.9, cex=0.8)
-#dev.off()
 
 # REPRESENT THE SMOOTH TREND LINE
 # Define a function to calculate moving average
@@ -200,28 +270,28 @@ moving_average <- function(x, n = 5){
 }
 
 # Smooth the time series using a 50-point moving average
-tropical_smooth <- moving_average(rev(res_size$tropical), n = 50)
-temperate_smooth <- moving_average(rev(res_size$temperate), n = 50)
-desert_smooth <- moving_average(rev(res_size$desert), n = 50)
+tropical_smooth <- moving_average(clr_data$tropical, n = 50)
+temperate_smooth <- moving_average(clr_data$temperate, n = 50)
+desert_smooth <- moving_average(clr_data$desert, n = 50)
 
 # Set up two plots, one above the other
 par(mfrow = c(2, 1)) 
 
-# First plot: original temporal evolution
-plot(2501:1, rev(res_size$tropical), type = "l", col = "#FF82AB", axes = FALSE,
-     ylab = "Area (10^8 ha)", xlab = "Million Years Before Present", frame.plot = FALSE,
-     xlim = c(2500, 500), ylim = c(0, 70), main = "Temporal Evolution of the Pixel Area of Each Climate Zone")
+# First plot: original temporal evolution after CLR transformation
+plot(2501:1, clr_data$tropical, type = "l", col = "#FF82AB", axes = FALSE,
+     ylab = "CLR Transformed Area", xlab = "Million Years Before Present", frame.plot = FALSE,
+     xlim = c(2500, 500), ylim = range(clr_data), main = "Temporal Evolution of the Pixel Area of Each Climate Zone (CLR)")
 axis(1, at = seq(2500, 500, by = -100), labels = seq(2.5, 0.5, by = -0.1))
 axis(2)
-lines(2501:1, rev(res_size$temperate), type = "l", col = "#008B00")
-lines(2501:1, rev(res_size$desert), type = "l", col = "#CDBE70")
+lines(2501:1, clr_data$temperate, type = "l", col = "#008B00")
+lines(2501:1, clr_data$desert, type = "l", col = "#CDBE70")
 legend("topright", legend = c("Tropical", "Temperate", "Desert"), col = c("#FF82AB", "#008B00", "#CDBE70"),
        lty = 1, bg = "white", y.intersp = 0.9, cex = 0.8)
 
-# Second plot: smoothed temporal evolution
+# Second plot: smoothed temporal evolution after CLR transformation
 plot(2501:1, tropical_smooth, type = "l", col = "#FF82AB", axes = FALSE,
-     ylab = "Area (10^8 ha)", xlab = "Million Years Before Present", frame.plot = FALSE,
-     xlim = c(2500, 500), ylim = c(0, 70), main = "Smooth Time Evolution of the Pixel Area of Each Climate Zone")
+     ylab = "CLR Transformed Area", xlab = "Million Years Before Present", frame.plot = FALSE,
+     xlim = c(2500, 500), ylim = range(clr_data), main = "Smooth Time Evolution of the Pixel Area of Each Climate Zone (CLR)")
 axis(1, at = seq(2500, 500, by = -100), labels = seq(2.5, 0.5, by = -0.1))
 axis(2)
 lines(2501:1, temperate_smooth, type = "l", col = "#008B00")
@@ -244,9 +314,11 @@ cat("\nCitation for rnaturalearthdata:\n")
 print(citation("rnaturalearthdata"))
 cat("\nCitation for ggplot2:\n")
 print(citation("ggplot2"))
-cat("\nCitation for viridisLite:\n")
-print(citation("viridisLite"))
-cat("\nCitation for raster:\n")
-print(citation("raster"))
+cat("\nCitation for viridis:\n")
+print(citation("viridis"))
 cat("\nCitation for fields:\n")
 print(citation("fields"))
+cat("\nCitation for compositions:\n")
+print(citation("compositions"))
+cat("\nCitation for gridExtra:\n")
+print(citation("gridExtra"))
